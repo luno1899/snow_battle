@@ -91,6 +91,7 @@ if(MSVC)
 else()
   target_compile_definitions(snowball_round PRIVATE LINUX _LINUX POSIX _FILE_OFFSET_BITS=64 _GLIBCXX_USE_CXX11_ABI=0)
   target_compile_options(snowball_round PRIVATE -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -fno-omit-frame-pointer -Wall -Wno-unused-parameter -Wno-non-virtual-dtor)
+  target_include_directories(snowball_round PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/compat")
   target_link_options(snowball_round PRIVATE -static-libgcc -static-libstdc++)
   target_link_libraries(snowball_round PRIVATE
     "${HL2SDK_CS2}/lib/linux64/mathlib.a"
