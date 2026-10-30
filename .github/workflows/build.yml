@@ -51,6 +51,12 @@ jobs:
             tail -n 200 build.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          grep -E '(^|[[:space:]])(fatal )?error:' build.log | tail -n 20 | while IFS= read -r line; do
+            line="${line//'%'/'%25'}"
+            line="${line//$'\r'/'%0D'}"
+            line="${line//$'\n'/'%0A'}"
+            echo "::error title=Compiler::$line"
+          done
 
       - name: Package
         run: cmake --install build --config Release --prefix package
