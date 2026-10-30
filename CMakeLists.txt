@@ -31,10 +31,10 @@ add_custom_command(
   OUTPUT ${PROTO_OUTPUTS}
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${GENERATED_DIR}"
   COMMAND "${PROTOC}"
-    --cpp_out="${GENERATED_DIR}"
-    --proto_path="${HL2SDK_CS2}/common"
-    --proto_path="${HL2SDK_CS2}/game/shared"
-    --proto_path="${HL2SDK_CS2}/thirdparty/protobuf-3.21.8/src"
+    --cpp_out=${GENERATED_DIR}
+    --proto_path=${HL2SDK_CS2}/common
+    --proto_path=${HL2SDK_CS2}/game/shared
+    --proto_path=${HL2SDK_CS2}/thirdparty/protobuf-3.21.8/src
     "${HL2SDK_CS2}/common/valveextensions.proto"
     "${HL2SDK_CS2}/common/network_connection.proto"
     "${HL2SDK_CS2}/common/networkbasetypes.proto"
