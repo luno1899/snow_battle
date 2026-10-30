@@ -91,11 +91,12 @@ if(MSVC)
 else()
   target_compile_definitions(snowball_round PRIVATE
     LINUX _LINUX POSIX _FILE_OFFSET_BITS=64 _GLIBCXX_USE_CXX11_ABI=0
-    GNUC HAVE_STDINT_H
+    AMBUILD GNUC COMPILER_GCC COMPILER_GCC64 PLATFORM_POSIX PLATFORM_LINUX PLATFORM_64BITS
+    HAVE_STDINT_H
     stricmp=strcasecmp _stricmp=strcasecmp
     _snprintf=snprintf _vsnprintf=vsnprintf)
   target_compile_options(snowball_round PRIVATE
-    -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -fno-omit-frame-pointer
+    -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -fno-omit-frame-pointer -msse
     -fno-strict-aliasing -Wall -Wno-unused-parameter -Wno-non-virtual-dtor
     -Wno-overloaded-virtual -Wno-invalid-offsetof)
   target_include_directories(snowball_round PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/compat")
