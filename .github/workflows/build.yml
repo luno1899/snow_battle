@@ -1,0 +1,55 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Checkout Metamod 1411
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/metamod-source
+          ref: 2.0.0.1411
+          path: deps/metamod-source
+          submodules: recursive
+
+      - name: Checkout the matching CS2 SDK
+        uses: actions/checkout@v4
+        with:
+          repository: Source2ZE/CS2Fixes
+          ref: v1.20.1
+          path: deps/cs2fixes
+          submodules: recursive
+
+      - name: Configure
+        shell: bash
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DMETAMOD_SOURCE="${{ github.workspace }}/deps/metamod-source"
+          -DHL2SDK_CS2="${{ github.workspace }}/deps/cs2fixes/sdk"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Package
+        run: cmake --install build --config Release --prefix package
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: snowball-round-${{ runner.os }}
+          path: package
+          if-no-files-found: error

@@ -1,0 +1,5 @@
+"Metamod Plugin"
+{
+	"alias"	"snowball_round"
+	"file"	"@PLUGIN_VDF_PATH@"
+}
