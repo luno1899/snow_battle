@@ -7,18 +7,14 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout plugin
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Checkout Metamod 1411
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: alliedmodders/metamod-source
           ref: 2.0.0.1411
@@ -26,7 +22,7 @@ jobs:
           submodules: recursive
 
       - name: Checkout the matching CS2 SDK
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: Source2ZE/CS2Fixes
           ref: v1.20.1
@@ -42,7 +38,19 @@ jobs:
           -DHL2SDK_CS2="${{ github.workspace }}/deps/cs2fixes/sdk"
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        shell: bash
+        run: cmake --build build --config Release --parallel 2>&1 | tee build.log
+
+      - name: Add compiler error to summary
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '## Compiler output'
+            echo '```text'
+            tail -n 200 build.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Package
         run: cmake --install build --config Release --prefix package
@@ -50,6 +58,6 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: snowball-round-${{ runner.os }}
+          name: snowball-round-linux
           path: package
           if-no-files-found: error

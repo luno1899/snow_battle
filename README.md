@@ -19,7 +19,7 @@
 2. Откройте вкладку **Actions** и запустите workflow `build` (он также запускается при push).
 3. Скачайте артефакт `snowball-round-Linux` или `snowball-round-Windows`.
 
-Workflow сам скачивает Metamod `2.0.0.1411` и совместимый HL2SDK. Локально SDK хранить не нужно.
+Workflow сам скачивает Metamod `2.0.0.1411` и совместимый HL2SDK, затем собирает Linux-версию. Локально SDK хранить не нужно.
 
 ## Установка
 
@@ -28,12 +28,6 @@ Workflow сам скачивает Metamod `2.0.0.1411` и совместимы�
 ```text
 game/csgo/addons/metamod/snowball_round.vdf
 game/csgo/addons/snowball_round/bin/linuxsteamrt64/snowball_round.so
-```
-
-или для Windows:
-
-```text
-game/csgo/addons/snowball_round/bin/win64/snowball_round.dll
 ```
 
 Перезапустите сервер и проверьте `meta list`.
