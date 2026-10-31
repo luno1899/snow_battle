@@ -24,6 +24,7 @@ constexpr const char* kRoundMessage =
 	"СНЕЖНАЯ БИТВА! Только ножи и бесконечные снежки!";
 
 IServerGameDLL* g_server = nullptr;
+IVEngineServer2* g_engine = nullptr;
 IServerGameClients* g_gameClients = nullptr;
 ICvar* g_cvar = nullptr;
 ISchemaSystem* g_schemaSystem = nullptr;
@@ -138,6 +139,7 @@ bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t m
 	GET_V_IFACE_CURRENT(GetEngineFactory, g_schemaSystem, ISchemaSystem, SCHEMASYSTEM_INTERFACE_VERSION);
 	GET_V_IFACE_CURRENT(GetEngineFactory, g_gameResourceService, IGameResourceService, GAMERESOURCESERVICESERVER_INTERFACE_VERSION);
 	GET_V_IFACE_ANY(GetServerFactory, g_server, IServerGameDLL, INTERFACEVERSION_SERVERGAMEDLL);
+	GET_V_IFACE_CURRENT(GetEngineFactory, g_engine, IVEngineServer2, SOURCE2ENGINETOSERVER_INTERFACE_VERSION);
 	GET_V_IFACE_ANY(GetServerFactory, g_gameClients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS);
 	GET_V_IFACE_ANY(GetEngineFactory, g_gameEventSystem, IGameEventSystem, GAMEEVENTSYSTEM_INTERFACE_VERSION);
 	GET_V_IFACE_ANY(GetEngineFactory, g_networkMessages, INetworkMessages, NETWORKMESSAGES_INTERFACE_VERSION);
@@ -472,40 +474,15 @@ bool SnowballRoundPlugin::ReadGameRules(int& currentRound, bool& warmup)
 
 void SnowballRoundPlugin::ApplySnowballLoadoutToAll()
 {
-	// The CS2 item-services vtable is version-sensitive. Calling guessed
-	// entries here can invoke a pure virtual function and crash the server.
-	// Leave loadout ownership to the snowball/decoy plugin until a validated
-	// game-data signature is available.
-	return;
+	// Give the normal decoy through the engine command path. The companion
+	// snowball plugin is responsible for converting it into a snowball.
+	if (!g_engine)
+		return;
 
 	constexpr int maxClients = 64;
 	for (int slot = 0; slot < maxClients; ++slot)
 	{
-		CEntityInstance* controller = ResolveEntity(CEntityIndex(slot + 1));
-		if (!controller)
-			continue;
-
-		auto* controllerBytes = reinterpret_cast<uint8_t*>(controller);
-		if (!*reinterpret_cast<bool*>(controllerBytes + m_offsets.pawnAlive))
-			continue;
-
-		const CEntityHandle pawnHandle = *reinterpret_cast<CEntityHandle*>(controllerBytes + m_offsets.playerPawn);
-		CEntityInstance* pawn = ResolveEntity(pawnHandle);
-		if (!pawn)
-			continue;
-
-		auto* pawnBytes = reinterpret_cast<uint8_t*>(pawn);
-		auto* items = *reinterpret_cast<CCSPlayerItemServices**>(pawnBytes + m_offsets.itemServices);
-		if (!items)
-			continue;
-
-		const uint8_t team = *reinterpret_cast<uint8_t*>(controllerBytes + m_offsets.teamNumber);
-		if (team != kTeamTerrorist && team != kTeamCounterTerrorist)
-			continue;
-
-		items->StripPlayerWeapons(false);
-		items->GiveNamedItem(team == kTeamTerrorist ? "weapon_knife_t" : "weapon_knife");
-		items->GiveNamedItem("weapon_decoy");
+		g_engine->ClientCommand(CPlayerSlot(slot), "give weapon_decoy");
 	}
 }
 
