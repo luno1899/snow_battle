@@ -86,6 +86,11 @@ bool IsBuyCommand(const char* command)
 		 !V_stricmp(command, "buyammo2"));
 }
 
+void SnowballConsoleCommand(const CCommand&)
+{
+	g_SnowballRound.BeginTestRound();
+}
+
 bool IsSnowballTestCommand(const CCommand& command)
 {
 	if (command.ArgC() < 1)
@@ -122,6 +127,8 @@ SH_DECL_HOOK8_void(IGameEventSystem, PostEventAbstract, SH_NOATTRIB, 0,
 	const CNetMessage*, unsigned long, NetChannelBufType_t);
 
 SnowballRoundPlugin g_SnowballRound;
+ConCommand g_snowballConsoleCommand("mm_sb", SnowballConsoleCommand,
+	"Start a snowball round immediately", FCVAR_NONE);
 PLUGIN_EXPOSE(SnowballRoundPlugin, g_SnowballRound);
 
 bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t maxlen, bool late)
@@ -137,6 +144,7 @@ bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t m
 	GET_V_IFACE_ANY(GetEngineFactory, g_networkMessages, INetworkMessages, NETWORKMESSAGES_INTERFACE_VERSION);
 
 	g_pCVar = g_cvar;
+	g_cvar->RegisterConCommand(&g_snowballConsoleCommand);
 	g_SMAPI->AddListener(this, this);
 
 	SH_ADD_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), true);
@@ -150,6 +158,8 @@ bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t m
 bool SnowballRoundPlugin::Unload(char* error, size_t maxlen)
 {
 	RestoreRoundCvars();
+	if (g_cvar)
+		g_cvar->UnregisterConCommand(&g_snowballConsoleCommand);
 
 	SH_REMOVE_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), true);
 	SH_REMOVE_HOOK(IServerGameClients, ClientCommand, g_gameClients, SH_MEMBER(this, &SnowballRoundPlugin::HookClientCommand), false);

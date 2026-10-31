@@ -25,6 +25,7 @@ public:
 	void HookPostEvent(CSplitScreenSlot slot, bool localOnly, int clientCount,
 		const uint64* clients, INetworkMessageInternal* event, const CNetMessage* data,
 		unsigned long size, NetChannelBufType_t bufferType);
+	void BeginTestRound();
 
 	const char* GetAuthor() override { return "snowboy"; }
 	const char* GetName() override { return "Snowball Round"; }
@@ -38,7 +39,6 @@ public:
 private:
 	void HandleEvent(const char* name);
 	void BeginRound();
-	void BeginTestRound();
 	void SetSnowballRound(bool enabled);
 	void OverrideRoundCvars();
 	void RestoreRoundCvars();
