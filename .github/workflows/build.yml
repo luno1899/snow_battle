@@ -7,7 +7,10 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    # Build against glibc 2.31 (Ubuntu 20.04), compatible with CS2
+    # linuxsteamrt64 servers. Building on newer Ubuntu would require
+    # GLIBC_2.33+ and the plugin would fail to load on the game server.
+    runs-on: ubuntu-20.04
 
     steps:
       - name: Checkout plugin
