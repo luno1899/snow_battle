@@ -4,7 +4,7 @@ project(snowball_round VERSION 1.0.0 LANGUAGES CXX)
 set(METAMOD_SOURCE "" CACHE PATH "Path to Metamod:Source 2.0.0-git1411 sources")
 set(HL2SDK_CS2 "" CACHE PATH "Path to the CS2 HL2SDK used by Metamod 1411")
 
-if(NOT EXISTS "${METAMOD_SOURCE}/core/sourcehook/sourcehook.h")
+if(NOT EXISTS "${METAMOD_SOURCE}/core/ISmmPlugin.h")
   message(FATAL_ERROR "METAMOD_SOURCE must point to Metamod:Source tag 2.0.0.1411 (SourceHook)")
 endif()
 if(NOT EXISTS "${HL2SDK_CS2}/public/eiface.h")
