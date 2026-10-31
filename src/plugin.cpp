@@ -87,6 +87,20 @@ bool IsBuyCommand(const char* command)
 		 !V_stricmp(command, "buyammo2"));
 }
 
+bool IsWeaponBlockCommand(const CCommand& command)
+{
+	if (command.ArgC() < 1)
+		return false;
+	if (!V_stricmp(command[0], "slot1") || !V_stricmp(command[0], "slot2"))
+		return true;
+	if (V_stricmp(command[0], "use") || command.ArgC() < 2)
+		return false;
+	return !V_stricmp(command[1], "weapon_ak47") || !V_stricmp(command[1], "weapon_m4a1") ||
+		!V_stricmp(command[1], "weapon_m4a1_silencer") || !V_stricmp(command[1], "weapon_awp") ||
+		!V_stricmp(command[1], "weapon_glock") || !V_stricmp(command[1], "weapon_hkp2000") ||
+		!V_stricmp(command[1], "weapon_usp_silencer") || !V_stricmp(command[1], "weapon_deagle");
+}
+
 void SnowballConsoleCommand(const CCommand&)
 {
 	g_SnowballRound.BeginTestRound();
@@ -224,6 +238,8 @@ void SnowballRoundPlugin::HookClientCommand(CPlayerSlot, const CCommand& command
 	}
 
 	if (m_snowballRound && command.ArgC() > 0 && IsBuyCommand(command[0]))
+		RETURN_META(MRES_SUPERCEDE);
+	if (m_snowballRound && IsWeaponBlockCommand(command))
 		RETURN_META(MRES_SUPERCEDE);
 
 	RETURN_META(MRES_IGNORED);
