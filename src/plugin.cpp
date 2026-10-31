@@ -88,9 +88,20 @@ bool IsBuyCommand(const char* command)
 
 bool IsSnowballTestCommand(const CCommand& command)
 {
-	if (command.ArgC() < 2 || V_stricmp(command[0], "say"))
+	if (command.ArgC() < 2 ||
+		(V_stricmp(command[0], "say") && V_stricmp(command[0], "say_team")))
 		return false;
-	return !V_stricmp(command[1], "!sb") || !V_stricmp(command[1], "!snowball");
+
+	char text[64];
+	V_strncpy(text, command[1], sizeof(text));
+	const size_t length = std::strlen(text);
+	if (length >= 2 && text[0] == '"' && text[length - 1] == '"')
+	{
+		std::memmove(text, text + 1, length - 2);
+		text[length - 2] = '\0';
+	}
+
+	return !V_stricmp(text, "!sb") || !V_stricmp(text, "!snowball");
 }
 } // namespace
 
