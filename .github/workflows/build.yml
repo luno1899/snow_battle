@@ -23,21 +23,14 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v5
 
-      - name: Checkout Metamod 1411
-        uses: actions/checkout@v5
-        with:
-          repository: alliedmodders/metamod-source
-          ref: 2.0.0.1411
-          path: deps/metamod-source
-          submodules: recursive
-
-      - name: Checkout the matching CS2 SDK
-        uses: actions/checkout@v5
-        with:
-          repository: Source2ZE/CS2Fixes
-          ref: v1.20.1
-          path: deps/cs2fixes
-          submodules: recursive
+      - name: Download Metamod and CS2 SDK
+        shell: bash
+        run: |
+          mkdir -p deps
+          git clone --depth 1 --branch 2.0.0.1411 --recurse-submodules \
+            https://github.com/alliedmodders/metamod-source.git deps/metamod-source
+          git clone --depth 1 --branch v1.20.1 --recurse-submodules \
+            https://github.com/Source2ZE/CS2Fixes.git deps/cs2fixes
 
       - name: Configure
         shell: bash
