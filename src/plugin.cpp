@@ -472,8 +472,11 @@ bool SnowballRoundPlugin::ReadGameRules(int& currentRound, bool& warmup)
 
 void SnowballRoundPlugin::ApplySnowballLoadoutToAll()
 {
-	if (!RefreshEntitySystem() || !ResolveSchemaOffsets())
-		return;
+	// The CS2 item-services vtable is version-sensitive. Calling guessed
+	// entries here can invoke a pure virtual function and crash the server.
+	// Leave loadout ownership to the snowball/decoy plugin until a validated
+	// game-data signature is available.
+	return;
 
 	constexpr int maxClients = 64;
 	for (int slot = 0; slot < maxClients; ++slot)
