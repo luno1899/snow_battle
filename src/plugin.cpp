@@ -264,6 +264,10 @@ void SnowballRoundPlugin::HandleEvent(const char* name)
 	}
 	else if (!std::strcmp(name, "round_start"))
 	{
+		// Some CS2 builds do not emit round_prestart through the legacy event
+		// bridge. round_start is always delivered, so use it as the fallback
+		// round boundary as well.
+		BeginRound();
 		if (m_snowballRound)
 		{
 			m_applyLoadoutsNextFrame = true;
@@ -287,7 +291,10 @@ void SnowballRoundPlugin::BeginRound()
 {
 	bool warmup = false;
 	int round = 0;
-	if (!ReadGameRules(round, warmup))
+	const bool haveRules = ReadGameRules(round, warmup);
+	if (haveRules && round == m_currentRound)
+		return;
+	if (!haveRules)
 		round = ++m_fallbackRound;
 	else
 		m_fallbackRound = round;
