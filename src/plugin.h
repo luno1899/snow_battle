@@ -38,6 +38,7 @@ public:
 private:
 	void HandleEvent(const char* name);
 	void BeginRound();
+	void BeginTestRound();
 	void SetSnowballRound(bool enabled);
 	void OverrideRoundCvars();
 	void RestoreRoundCvars();

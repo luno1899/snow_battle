@@ -85,6 +85,13 @@ bool IsBuyCommand(const char* command)
 		 !V_stricmp(command, "rebuy") || !V_stricmp(command, "buyammo1") ||
 		 !V_stricmp(command, "buyammo2"));
 }
+
+bool IsSnowballTestCommand(const CCommand& command)
+{
+	if (command.ArgC() < 2 || V_stricmp(command[0], "say"))
+		return false;
+	return !V_stricmp(command[1], "!sb") || !V_stricmp(command[1], "!snowball");
+}
 } // namespace
 
 SH_DECL_HOOK3_void(IServerGameDLL, GameFrame, SH_NOATTRIB, 0, bool, bool, bool);
@@ -176,10 +183,25 @@ void SnowballRoundPlugin::HookGameFrame(bool simulating, bool, bool)
 
 void SnowballRoundPlugin::HookClientCommand(CPlayerSlot, const CCommand& command)
 {
+	if (IsSnowballTestCommand(command))
+	{
+		BeginTestRound();
+		RETURN_META(MRES_IGNORED);
+	}
+
 	if (m_snowballRound && command.ArgC() > 0 && IsBuyCommand(command[0]))
 		RETURN_META(MRES_SUPERCEDE);
 
 	RETURN_META(MRES_IGNORED);
+}
+
+void SnowballRoundPlugin::BeginTestRound()
+{
+	m_currentRound = 0;
+	SetSnowballRound(true);
+	m_applyLoadoutsNextFrame = true;
+	m_showMessageNextFrame = true;
+	META_CONPRINTF("[SnowballRound] Test snowball round started by !sb.\n");
 }
 
 void SnowballRoundPlugin::HookPostEvent(CSplitScreenSlot, bool, int, const uint64*,
