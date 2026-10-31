@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.16)
 project(snowball_round VERSION 1.0.0 LANGUAGES CXX)
 
 set(METAMOD_SOURCE "" CACHE PATH "Path to Metamod:Source 2.0.0-git1411 sources")
