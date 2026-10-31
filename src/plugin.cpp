@@ -127,8 +127,7 @@ SH_DECL_HOOK8_void(IGameEventSystem, PostEventAbstract, SH_NOATTRIB, 0,
 	const CNetMessage*, unsigned long, NetChannelBufType_t);
 
 SnowballRoundPlugin g_SnowballRound;
-ConCommand g_snowballConsoleCommand("mm_sb", SnowballConsoleCommand,
-	"Start a snowball round immediately", FCVAR_NONE);
+ConCommandCreation_t g_snowballConsoleCommand{};
 PLUGIN_EXPOSE(SnowballRoundPlugin, g_SnowballRound);
 
 bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t maxlen, bool late)
@@ -144,6 +143,11 @@ bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t m
 	GET_V_IFACE_ANY(GetEngineFactory, g_networkMessages, INetworkMessages, NETWORKMESSAGES_INTERFACE_VERSION);
 
 	g_pCVar = g_cvar;
+	g_snowballConsoleCommand.m_pszName = "mm_sb";
+	g_snowballConsoleCommand.m_pszHelpString = "Start a snowball round immediately";
+	g_snowballConsoleCommand.m_nFlags = FCVAR_GAMEDLL;
+	g_snowballConsoleCommand.m_CBInfo = ConCommandCallbackInfo_t(SnowballConsoleCommand);
+	g_cvar->RegisterConCommand(g_snowballConsoleCommand);
 	g_SMAPI->AddListener(this, this);
 
 	SH_ADD_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), true);
