@@ -88,6 +88,16 @@ bool IsBuyCommand(const char* command)
 
 bool IsSnowballTestCommand(const CCommand& command)
 {
+	if (command.ArgC() < 1)
+		return false;
+
+	// Some CS2 chat/command bridges strip the leading '!' and invoke the
+	// handler as a standalone command ("sb" or "mm_sb").
+	if (!V_stricmp(command[0], "sb") || !V_stricmp(command[0], "!sb") ||
+		!V_stricmp(command[0], "mm_sb") || !V_stricmp(command[0], "snowball") ||
+		!V_stricmp(command[0], "!snowball"))
+		return true;
+
 	if (command.ArgC() < 2 ||
 		(V_stricmp(command[0], "say") && V_stricmp(command[0], "say_team")))
 		return false;
