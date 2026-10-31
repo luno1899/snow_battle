@@ -144,7 +144,6 @@ bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t m
 	GET_V_IFACE_ANY(GetEngineFactory, g_networkMessages, INetworkMessages, NETWORKMESSAGES_INTERFACE_VERSION);
 
 	g_pCVar = g_cvar;
-	g_cvar->RegisterConCommand(g_snowballConsoleCommand.GetRegistrationInfo());
 	g_SMAPI->AddListener(this, this);
 
 	SH_ADD_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), true);
