@@ -7,12 +7,19 @@ on:
 
 jobs:
   build:
-    # Build against glibc 2.31 (Ubuntu 20.04), compatible with CS2
-    # linuxsteamrt64 servers. Building on newer Ubuntu would require
-    # GLIBC_2.33+ and the plugin would fail to load on the game server.
-    runs-on: ubuntu-20.04
+    # Use an available hosted runner, but compile inside Ubuntu 20.04 so the
+    # resulting binary only requires glibc 2.31 (SteamRuntime compatible).
+    runs-on: ubuntu-24.04
+    container: ubuntu:20.04
 
     steps:
+      - name: Install build tools
+        shell: bash
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git cmake g++ make protobuf-compiler
+
       - name: Checkout plugin
         uses: actions/checkout@v5
 
