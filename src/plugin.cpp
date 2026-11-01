@@ -1,5 +1,6 @@
 #include "plugin.h"
 #include "weapon_policy.h"
+#include "signature_scan.h"
 
 #include <icvar.h>
 #include <iserver.h>
@@ -13,6 +14,9 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#if defined(__linux__)
+#include <link.h>
+#endif
 
 namespace
 {
@@ -168,6 +172,8 @@ void SnowballRoundPlugin::ResetMapState()
 	m_offsets = {};
 	m_primaryAttack = m_secondaryAttack = -1;
 	m_schemaErrorLogged = m_weaponSchemaErrorLogged = false;
+	m_loadoutErrorLogged = false;
+	m_loadoutFrames = 0;
 }
 
 void SnowballRoundPlugin::HookGameFrame(bool simulating, bool, bool)
@@ -178,8 +184,9 @@ void SnowballRoundPlugin::HookGameFrame(bool simulating, bool, bool)
 	if (m_snowballRound)
 		LockWeapons();
 
-	if (m_applyLoadoutsNextFrame)
+	if (m_applyLoadoutsNextFrame || (m_snowballRound && ++m_loadoutFrames >= 16))
 	{
+		m_loadoutFrames = 0;
 		m_applyLoadoutsNextFrame = false;
 		if (m_snowballRound)
 			ApplySnowballLoadoutToAll();
@@ -481,6 +488,7 @@ bool SnowballRoundPlugin::ResolveSchemaOffsets()
 	m_offsets.pawnAlive = FindSchemaOffset("CCSPlayerController", "m_bPawnIsAlive");
 	m_offsets.teamNumber = FindSchemaOffset("CBaseEntity", "m_iTeamNum");
 	m_offsets.itemServices = FindSchemaOffset("CBasePlayerPawn", "m_pItemServices");
+	m_offsets.ownerEntity = FindSchemaOffset("CBaseEntity", "m_hOwnerEntity");
 	m_offsets.gameRules = FindSchemaOffset("CCSGameRulesProxy", "m_pGameRules");
 	m_offsets.totalRoundsPlayed = FindSchemaOffset("CCSGameRules", "m_totalRoundsPlayed");
 	m_offsets.warmupPeriod = FindSchemaOffset("CCSGameRules", "m_bWarmupPeriod");
@@ -614,17 +622,89 @@ void SnowballRoundPlugin::RestoreWeapons()
 	m_lockedWeapons.clear();
 }
 
+bool SnowballRoundPlugin::ResolveDecoyGiveFunction()
+{
+	if (m_giveItemResolved)
+		return m_giveItem != nullptr;
+	m_giveItemResolved = true;
+#if defined(__linux__)
+	// CounterStrikeSharp gamedata: GiveNamedItem (Linux). The actual server
+	// function takes item services, name, subtype and three optional pointers.
+	// https://github.com/roflmuffin/CounterStrikeSharp/blob/main/configs/addons/counterstrikesharp/gamedata/gamedata.json
+	struct Search
+	{
+		std::vector<int> pattern;
+		const uint8_t* address = nullptr;
+		size_t matches = 0;
+	} search{ParseSignature("55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC ? ? ? ? 48 89 BD ? ? ? ? 89 95 ? ? ? ? 48 89 8D ? ? ? ? 44 89 85")};
+	dl_iterate_phdr([](dl_phdr_info* module, size_t, void* context) -> int {
+		const char* name = std::strrchr(module->dlpi_name, '/');
+		name = name ? name + 1 : module->dlpi_name;
+		if (std::strcmp(name, "libserver.so")) return 0;
+		auto& result = *static_cast<Search*>(context);
+		for (int i = 0; i < module->dlpi_phnum; ++i)
+		{
+			const auto& segment = module->dlpi_phdr[i];
+			if (segment.p_type != PT_LOAD || (segment.p_flags & (PF_R | PF_X)) != (PF_R | PF_X)) continue;
+			ScanSignature(reinterpret_cast<const uint8_t*>(module->dlpi_addr + segment.p_vaddr),
+				segment.p_memsz, result.pattern, result.address, result.matches);
+		}
+		return 1;
+	}, &search);
+	if (search.matches == 1)
+		m_giveItem = reinterpret_cast<GiveItemFunction>(const_cast<uint8_t*>(search.address));
+#endif
+	if (!m_giveItem)
+		META_CONPRINTF("[SnowballRound] ERROR: GiveNamedItem signature not unique or not found; decoy delivery disabled.\n");
+	else
+		META_CONPRINTF("[SnowballRound] Server GiveNamedItem resolved.\n");
+	return m_giveItem != nullptr;
+}
+
 void SnowballRoundPlugin::ApplySnowballLoadoutToAll()
 {
-	// Give the normal decoy through the engine command path. The companion
-	// snowball plugin is responsible for converting it into a snowball.
-	if (!g_engine)
+	if (!RefreshEntitySystem() || !ResolveSchemaOffsets() || !ResolveDecoyGiveFunction())
 		return;
+	if (m_offsets.playerPawn < 0 || m_offsets.pawnAlive < 0 || m_offsets.itemServices < 0 ||
+		m_offsets.teamNumber < 0 || m_offsets.ownerEntity < 0)
+	{
+		if (!m_loadoutErrorLogged)
+			META_CONPRINTF("[SnowballRound] ERROR: missing player/item/owner schema fields; cannot deliver decoys.\n");
+		m_loadoutErrorLogged = true;
+		return;
+	}
+
+	std::vector<CEntityHandle> ownersWithDecoy;
+	for (CEntityIdentity* identity = g_entitySystem->m_EntityList.m_pFirstActiveEntity;
+		identity; identity = identity->m_pNext)
+	{
+		const char* name = identity->GetClassname();
+		if (!identity->m_pInstance || !name || std::strcmp(name, "weapon_decoy")) continue;
+		auto* bytes = reinterpret_cast<uint8_t*>(identity->m_pInstance);
+		ownersWithDecoy.push_back(*reinterpret_cast<CEntityHandle*>(bytes + m_offsets.ownerEntity));
+	}
 
 	constexpr int maxClients = 64;
 	for (int slot = 0; slot < maxClients; ++slot)
 	{
-		g_engine->ClientCommand(CPlayerSlot(slot), "give weapon_decoy");
+		CEntityInstance* controller = ResolveEntity(CEntityIndex(slot + 1));
+		if (!controller) continue;
+		auto* bytes = reinterpret_cast<uint8_t*>(controller);
+		if (!*reinterpret_cast<bool*>(bytes + m_offsets.pawnAlive)) continue;
+		const auto team = *reinterpret_cast<uint8_t*>(bytes + m_offsets.teamNumber);
+		if (team != kTeamTerrorist && team != kTeamCounterTerrorist) continue;
+		const CEntityHandle pawnHandle = *reinterpret_cast<CEntityHandle*>(bytes + m_offsets.playerPawn);
+		if (std::find(ownersWithDecoy.begin(), ownersWithDecoy.end(), pawnHandle) != ownersWithDecoy.end()) continue;
+		CEntityInstance* pawn = ResolveEntity(pawnHandle);
+		if (!pawn) continue;
+		auto* pawnBytes = reinterpret_cast<uint8_t*>(pawn);
+		void* items = *reinterpret_cast<void**>(pawnBytes + m_offsets.itemServices);
+		if (!items) continue;
+		if (!m_giveItem(items, "weapon_decoy", nullptr, nullptr, nullptr, nullptr) && !m_loadoutErrorLogged)
+		{
+			m_loadoutErrorLogged = true;
+			META_CONPRINTF("[SnowballRound] ERROR: server refused weapon_decoy for slot %d.\n", slot);
+		}
 	}
 }
 

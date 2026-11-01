@@ -102,6 +102,7 @@ else()
   target_include_directories(snowball_round PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/compat")
   target_link_options(snowball_round PRIVATE -static-libgcc -static-libstdc++)
   target_link_libraries(snowball_round PRIVATE
+    dl
     "${HL2SDK_CS2}/lib/linux64/mathlib.a"
     "${HL2SDK_CS2}/lib/linux64/interfaces.a"
     "${HL2SDK_CS2}/lib/linux64/release/libprotobuf.a"

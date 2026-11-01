@@ -39,6 +39,8 @@ jobs:
           /tmp/snowball-weapon-test
           g++ -std=c++17 -Wall -Wextra -Werror -Isrc tests/round_tracker.cpp -o /tmp/snowball-round-test
           /tmp/snowball-round-test
+          g++ -std=c++17 -Wall -Wextra -Werror -Isrc tests/signature_scan.cpp -o /tmp/snowball-signature-test
+          /tmp/snowball-signature-test
 
       - name: Configure
         shell: bash

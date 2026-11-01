@@ -34,7 +34,7 @@ public:
 	const char* GetDescription() override { return "Every tenth round is a knife and snowball battle"; }
 	const char* GetURL() override { return ""; }
 	const char* GetLicense() override { return "MIT"; }
-	const char* GetVersion() override { return "1.1.1"; }
+	const char* GetVersion() override { return "1.1.2"; }
 	const char* GetDate() override { return __DATE__; }
 	const char* GetLogTag() override { return "SNOWBALL"; }
 
@@ -50,6 +50,12 @@ private:
 	void LockWeapons();
 	void RestoreWeapons();
 	bool UpdateRoundStateFromRules();
+	bool ResolveDecoyGiveFunction();
+	using GiveItemFunction = void* (*)(void*, const char*, void*, void*, void*, void*);
+	GiveItemFunction m_giveItem = nullptr;
+	bool m_giveItemResolved = false;
+	bool m_loadoutErrorLogged = false;
+	int m_loadoutFrames = 0;
 
 	bool RefreshEntitySystem();
 	bool ResolveSchemaOffsets();
@@ -92,6 +98,7 @@ private:
 		int pawnAlive = -1;
 		int teamNumber = -1;
 		int itemServices = -1;
+		int ownerEntity = -1;
 		int gameRules = -1;
 		int totalRoundsPlayed = -1;
 		int warmupPeriod = -1;
