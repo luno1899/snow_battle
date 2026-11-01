@@ -10,6 +10,7 @@
 
 #include <string>
 #include <vector>
+#include "round_tracker.h"
 
 class SnowballRoundPlugin final : public ISmmPlugin, public IMetamodListener
 {
@@ -33,7 +34,7 @@ public:
 	const char* GetDescription() override { return "Every tenth round is a knife and snowball battle"; }
 	const char* GetURL() override { return ""; }
 	const char* GetLicense() override { return "MIT"; }
-	const char* GetVersion() override { return "1.1.0"; }
+	const char* GetVersion() override { return "1.1.1"; }
 	const char* GetDate() override { return __DATE__; }
 	const char* GetLogTag() override { return "SNOWBALL"; }
 
@@ -51,7 +52,7 @@ private:
 
 	bool RefreshEntitySystem();
 	bool ResolveSchemaOffsets();
-	bool ReadGameRules(int& currentRound, bool& warmup);
+	bool ReadGameRules(int& currentRound, bool& warmup, RoundSnapshot* snapshot = nullptr);
 	CEntityInstance* ResolveEntity(CEntityIndex index) const;
 	CEntityInstance* ResolveEntity(const CEntityHandle& handle) const;
 	int FindSchemaOffset(const char* className, const char* fieldName) const;
@@ -62,6 +63,7 @@ private:
 	bool m_cvarsOverridden = false;
 	bool m_schemaErrorLogged = false;
 	bool m_roundPrepared = false;
+	RoundTracker m_roundTracker;
 	int m_fallbackRound = 0;
 	int m_currentRound = 0;
 	int m_lastEventTick = -1;
@@ -92,6 +94,9 @@ private:
 		int gameRules = -1;
 		int totalRoundsPlayed = -1;
 		int warmupPeriod = -1;
+		int freezePeriod = -1;
+		int roundStartTime = -1;
+		int restartRoundTime = -1;
 		bool resolved = false;
 	} m_offsets;
 };

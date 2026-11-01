@@ -37,6 +37,8 @@ jobs:
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror -Isrc tests/weapon_policy.cpp -o /tmp/snowball-weapon-test
           /tmp/snowball-weapon-test
+          g++ -std=c++17 -Wall -Wextra -Werror -Isrc tests/round_tracker.cpp -o /tmp/snowball-round-test
+          /tmp/snowball-round-test
 
       - name: Configure
         shell: bash

@@ -16,7 +16,6 @@
 
 namespace
 {
-constexpr int kSnowballInterval = 10;
 constexpr int kHudPrintCenter = 4;
 constexpr int kTeamTerrorist = 2;
 constexpr int kTeamCounterTerrorist = 3;
@@ -164,6 +163,7 @@ void SnowballRoundPlugin::ResetMapState()
 	m_lastEventTick = -1;
 	m_lastEventName.clear();
 	m_roundPrepared = false;
+	m_roundTracker = {};
 	m_lockedWeapons.clear();
 	m_offsets = {};
 	m_primaryAttack = m_secondaryAttack = -1;
@@ -175,16 +175,32 @@ void SnowballRoundPlugin::HookGameFrame(bool simulating, bool, bool)
 	if (!simulating)
 		RETURN_META(MRES_IGNORED);
 
-	if (m_snowballRound)
+	int round = 0;
+	bool warmup = false;
+	RoundSnapshot snapshot;
+	if (ReadGameRules(round, warmup, &snapshot))
 	{
-		int round = 0;
-		bool warmup = false;
-		// Also stop when rules advance if the broadcast round_end is missed.
-		if (ReadGameRules(round, warmup) && m_currentRound > 0 && round != m_currentRound)
+		const RoundChange change = m_roundTracker.Observe(snapshot);
+		if (snapshot.restartTime > 0 || change == RoundChange::Ended)
 			SetSnowballRound(false);
-		if (m_snowballRound)
-			LockWeapons();
+		else if (change == RoundChange::Started)
+		{
+			SetSnowballRound(false);
+			m_currentRound = round;
+			m_fallbackRound = round;
+			if (m_roundTracker.ClaimAutomaticRound(round, warmup))
+			{
+				SetSnowballRound(true);
+				m_applyLoadoutsNextFrame = m_showMessageNextFrame = true;
+			}
+			META_CONPRINTF("[SnowballRound] Rules round %d: snowball=%d, freeze=%d.\n",
+				round, m_snowballRound ? 1 : 0, snapshot.freeze ? 1 : 0);
+		}
+		else if (m_snowballRound && m_currentRound > 0 && round != m_currentRound)
+			SetSnowballRound(false);
 	}
+	if (m_snowballRound)
+		LockWeapons();
 
 	if (m_applyLoadoutsNextFrame)
 	{
@@ -222,7 +238,9 @@ void SnowballRoundPlugin::HookClientCommand(CPlayerSlot, const CCommand& command
 void SnowballRoundPlugin::BeginTestRound()
 {
 	bool warmup = false;
-	ReadGameRules(m_currentRound, warmup);
+	RoundSnapshot snapshot;
+	if (ReadGameRules(m_currentRound, warmup, &snapshot))
+		m_roundTracker.Observe(snapshot);
 	SetSnowballRound(true);
 	m_applyLoadoutsNextFrame = true;
 	m_showMessageNextFrame = true;
@@ -255,6 +273,17 @@ void SnowballRoundPlugin::HookPostEvent(CSplitScreenSlot, bool, int, const uint6
 
 void SnowballRoundPlugin::HandleEvent(const char* name)
 {
+	if (!std::strcmp(name, "round_prestart") || !std::strcmp(name, "round_start") ||
+		!std::strcmp(name, "round_end") || !std::strcmp(name, "round_officially_ended"))
+	{
+		int round = 0;
+		bool warmup = false;
+		RoundSnapshot snapshot;
+		// A single rules observer owns transitions when schema is available.
+		// Events can arrive before/after the rules update, or more than once.
+		if (ReadGameRules(round, warmup, &snapshot))
+			return;
+	}
 	if (!std::strcmp(name, "round_prestart"))
 	{
 		SetSnowballRound(false);
@@ -292,6 +321,7 @@ void SnowballRoundPlugin::HandleEvent(const char* name)
 	{
 		m_fallbackRound = 0;
 		m_currentRound = 0;
+		m_roundTracker = {};
 		SetSnowballRound(false);
 	}
 }
@@ -307,7 +337,8 @@ void SnowballRoundPlugin::BeginRound()
 		m_fallbackRound = round;
 
 	m_currentRound = round;
-	SetSnowballRound(!warmup && round > 0 && round % kSnowballInterval == 0);
+	if (m_roundTracker.ClaimAutomaticRound(round, warmup))
+		SetSnowballRound(true);
 
 	if (m_snowballRound)
 	{
@@ -448,6 +479,9 @@ bool SnowballRoundPlugin::ResolveSchemaOffsets()
 	m_offsets.gameRules = FindSchemaOffset("CCSGameRulesProxy", "m_pGameRules");
 	m_offsets.totalRoundsPlayed = FindSchemaOffset("CCSGameRules", "m_totalRoundsPlayed");
 	m_offsets.warmupPeriod = FindSchemaOffset("CCSGameRules", "m_bWarmupPeriod");
+	m_offsets.freezePeriod = FindSchemaOffset("CCSGameRules", "m_bFreezePeriod");
+	m_offsets.roundStartTime = FindSchemaOffset("CCSGameRules", "m_fRoundStartTime");
+	m_offsets.restartRoundTime = FindSchemaOffset("CCSGameRules", "m_flRestartRoundTime");
 
 	// Reading GameRules must not depend on unrelated player/loadout fields.
 	m_offsets.resolved = m_offsets.gameRules >= 0 &&
@@ -487,7 +521,7 @@ CEntityInstance* SnowballRoundPlugin::ResolveEntity(const CEntityHandle& handle)
 	return identity->GetRefEHandle() == handle ? identity->m_pInstance : nullptr;
 }
 
-bool SnowballRoundPlugin::ReadGameRules(int& currentRound, bool& warmup)
+bool SnowballRoundPlugin::ReadGameRules(int& currentRound, bool& warmup, RoundSnapshot* snapshot)
 {
 	if (!RefreshEntitySystem() || !ResolveSchemaOffsets())
 		return false;
@@ -506,6 +540,16 @@ bool SnowballRoundPlugin::ReadGameRules(int& currentRound, bool& warmup)
 		auto* bytes = reinterpret_cast<uint8_t*>(rules);
 		currentRound = *reinterpret_cast<int*>(bytes + m_offsets.totalRoundsPlayed) + 1;
 		warmup = *reinterpret_cast<bool*>(bytes + m_offsets.warmupPeriod);
+		if (snapshot)
+		{
+			if (m_offsets.freezePeriod < 0 || m_offsets.roundStartTime < 0 || m_offsets.restartRoundTime < 0)
+				return false;
+			snapshot->number = currentRound;
+			snapshot->warmup = warmup;
+			snapshot->freeze = *reinterpret_cast<bool*>(bytes + m_offsets.freezePeriod);
+			snapshot->startTime = *reinterpret_cast<float*>(bytes + m_offsets.roundStartTime);
+			snapshot->restartTime = *reinterpret_cast<float*>(bytes + m_offsets.restartRoundTime);
+		}
 		return true;
 	}
 	return false;
