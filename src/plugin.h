@@ -64,6 +64,10 @@ private:
 	std::string m_lastEventName;
 	float m_savedBuyTime = 0.0f;
 	int m_savedInfiniteAmmo = 0;
+	int m_savedBuyGuns = 1;
+	int m_savedBuyGrenades = 1;
+	std::string m_savedTDefaultGrenades;
+	std::string m_savedCTDefaultGrenades;
 
 	struct SchemaOffsets
 	{

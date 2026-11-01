@@ -350,6 +350,10 @@ void SnowballRoundPlugin::OverrideRoundCvars()
 
 	ConVarRefAbstract buyTime("mp_buytime");
 	ConVarRefAbstract infiniteAmmo("sv_infinite_ammo");
+	ConVarRefAbstract buyGuns("mp_buy_allow_guns");
+	ConVarRefAbstract buyGrenades("mp_buy_allow_grenades");
+	ConVarRefAbstract tGrenades("mp_t_default_grenades");
+	ConVarRefAbstract ctGrenades("mp_ct_default_grenades");
 	if (!buyTime.IsValidRef() || !infiniteAmmo.IsValidRef())
 	{
 		META_CONPRINTF("[SnowballRound] Could not find mp_buytime or sv_infinite_ammo.\n");
@@ -358,9 +362,25 @@ void SnowballRoundPlugin::OverrideRoundCvars()
 
 	m_savedBuyTime = buyTime.GetFloat();
 	m_savedInfiniteAmmo = infiniteAmmo.GetInt();
+	if (buyGuns.IsValidRef())
+		m_savedBuyGuns = buyGuns.GetInt();
+	if (buyGrenades.IsValidRef())
+		m_savedBuyGrenades = buyGrenades.GetInt();
+	if (tGrenades.IsValidRef())
+		m_savedTDefaultGrenades = tGrenades.GetString().Get();
+	if (ctGrenades.IsValidRef())
+		m_savedCTDefaultGrenades = ctGrenades.GetString().Get();
 	m_cvarsOverridden = true;
 	buyTime.SetFloat(0.0f);
 	infiniteAmmo.SetInt(1);
+	if (buyGuns.IsValidRef())
+		buyGuns.SetInt(0);
+	if (buyGrenades.IsValidRef())
+		buyGrenades.SetInt(1);
+	if (tGrenades.IsValidRef())
+		tGrenades.SetString("weapon_decoy");
+	if (ctGrenades.IsValidRef())
+		ctGrenades.SetString("weapon_decoy");
 }
 
 void SnowballRoundPlugin::RestoreRoundCvars()
@@ -370,10 +390,22 @@ void SnowballRoundPlugin::RestoreRoundCvars()
 
 	ConVarRefAbstract buyTime("mp_buytime");
 	ConVarRefAbstract infiniteAmmo("sv_infinite_ammo");
+	ConVarRefAbstract buyGuns("mp_buy_allow_guns");
+	ConVarRefAbstract buyGrenades("mp_buy_allow_grenades");
+	ConVarRefAbstract tGrenades("mp_t_default_grenades");
+	ConVarRefAbstract ctGrenades("mp_ct_default_grenades");
 	if (buyTime.IsValidRef())
 		buyTime.SetFloat(m_savedBuyTime);
 	if (infiniteAmmo.IsValidRef())
 		infiniteAmmo.SetInt(m_savedInfiniteAmmo);
+	if (buyGuns.IsValidRef())
+		buyGuns.SetInt(m_savedBuyGuns);
+	if (buyGrenades.IsValidRef())
+		buyGrenades.SetInt(m_savedBuyGrenades);
+	if (tGrenades.IsValidRef())
+		tGrenades.SetString(m_savedTDefaultGrenades.c_str());
+	if (ctGrenades.IsValidRef())
+		ctGrenades.SetString(m_savedCTDefaultGrenades.c_str());
 	m_cvarsOverridden = false;
 }
 
