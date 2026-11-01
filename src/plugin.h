@@ -17,6 +17,7 @@ class SnowballRoundPlugin final : public ISmmPlugin, public IMetamodListener
 public:
 	bool Load(PluginId id, ISmmAPI* ismm, char* error, size_t maxlen, bool late) override;
 	bool Unload(char* error, size_t maxlen) override;
+	void AllPluginsLoaded() override;
 
 	void OnLevelInit(const char* mapName, const char* mapEntities, const char* oldLevel,
 		const char* landmarkName, bool loadGame, bool background) override;
@@ -34,7 +35,7 @@ public:
 	const char* GetDescription() override { return "Every tenth round is a knife and snowball battle"; }
 	const char* GetURL() override { return ""; }
 	const char* GetLicense() override { return "MIT"; }
-	const char* GetVersion() override { return "1.1.2"; }
+	const char* GetVersion() override { return "1.2.0"; }
 	const char* GetDate() override { return __DATE__; }
 	const char* GetLogTag() override { return "SNOWBALL"; }
 
@@ -50,10 +51,8 @@ private:
 	void LockWeapons();
 	void RestoreWeapons();
 	bool UpdateRoundStateFromRules();
-	bool ResolveDecoyGiveFunction();
-	using GiveItemFunction = void* (*)(void*, const char*, void*, void*, void*, void*);
-	GiveItemFunction m_giveItem = nullptr;
-	bool m_giveItemResolved = false;
+	CEntityInstance* GetDecoyEquip();
+	CEntityHandle m_decoyEquip;
 	bool m_loadoutErrorLogged = false;
 	int m_loadoutFrames = 0;
 

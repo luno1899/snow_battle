@@ -6,7 +6,7 @@
 
 - запрещает команды покупки и ставит `mp_buytime 0`;
 - сервер блокирует основную и вторичную атаку оружия, кроме ножей и decoy; пистолет может оставаться видимым в руках, но стрелять не должен;
-- выдаёт обычную `weapon_decoy` живым игрокам серверной функцией `GiveNamedItem`, в том числе при `mm_sb` посреди раунда, и восполняет её после броска, если другой плагин удалил гранату;
+- выдаёт обычную `weapon_decoy` живым игрокам через `IUtilsApi` плагина Pisex/cs2-menus и сущность `game_player_equip`, в том числе при `mm_sb` посреди раунда, и восполняет её после броска, если другой плагин удалил гранату;
 - включает `sv_infinite_ammo 1` на время раунда;
 - показывает по центру HUD сообщение о снежной битве;
 - при окончании раунда возвращает исходные настройки покупки, стандартных гранат, бесконечных патронов и разрешает атаки оружия; окончание и начало определяются по GameRules каждый кадр, независимо от доставки сетевых событий.
@@ -25,6 +25,8 @@ Workflow сам скачивает Metamod `2.0.0.1411` и совместимы�
 
 Распакуйте содержимое артефакта в `game/csgo/`. В результате появятся:
 
+Также должен быть установлен [Pisex/cs2-menus (Utils) 1.9.2](https://github.com/Pisex/cs2-menus/releases/tag/1.9.2). Он предоставляет сигнатуры создания/спавна сущностей и передачи inputs. Если `IUtilsApi` недоступен, Snowball Round выводит ошибку и выгружается.
+
 ```text
 game/csgo/addons/metamod/snowball_round.vdf
 game/csgo/addons/snowball_round/bin/linuxsteamrt64/snowball_round.so
@@ -32,8 +34,8 @@ game/csgo/addons/snowball_round/bin/linuxsteamrt64/snowball_round.so
 
 Перезапустите сервер и проверьте `meta list`.
 
-Команда `mm_sb` в консоли сервера включает режим до конца текущего раунда. Версия этого исправления в `meta info` — `1.1.2`.
+Команда `mm_sb` в консоли сервера включает режим до конца текущего раунда. Версия этого исправления в `meta info` — `1.2.0`.
 
-Прямая выдача на Linux использует сигнатуру `GiveNamedItem` из [CounterStrikeSharp gamedata](https://github.com/roflmuffin/CounterStrikeSharp/blob/main/configs/addons/counterstrikesharp/gamedata/gamedata.json). CounterStrikeSharp устанавливать не требуется. Плагин ищет единственное совпадение в исполняемых сегментах `libserver.so`; если после обновления CS2 совпадение пропало, выводит `ERROR: GiveNamedItem signature ...` и не вызывает неизвестный адрес. Требуется обновить сигнатуру в `ResolveDecoyGiveFunction` и пересобрать плагин.
+Выдача больше не ищет собственную сигнатуру `GiveNamedItem` и не обращается к vtable ItemServices. Через Utils создаётся `game_player_equip` с `weapon1=weapon_decoy`, `spawnflags=1` (Use Only, без удаления оружия). Input `Use` отправляется с конкретным живым pawn в качестве activator. Обновлять сигнатуры нужно в Utils. Его оригинальный публичный заголовок версии 1.9.2 находится в `third_party/cs2-menus/utils.h`.
 
 Важно: плагин выдаёт именно `weapon_decoy`. Превращение decoy в снежок остаётся задачей уже установленного у вас второго плагина.

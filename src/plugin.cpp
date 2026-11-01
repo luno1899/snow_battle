@@ -1,11 +1,13 @@
 #include "plugin.h"
 #include "weapon_policy.h"
-#include "signature_scan.h"
 
 #include <icvar.h>
 #include <iserver.h>
 #include <tier1/convar.h>
 #include <tier1/strtools.h>
+#include <variant.h>
+#include <entity2/entitykeyvalues.h>
+#include "utils.h"
 
 #include "gameevents.pb.h"
 #include "usermessages.pb.h"
@@ -14,9 +16,6 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#if defined(__linux__)
-#include <link.h>
-#endif
 
 namespace
 {
@@ -29,6 +28,7 @@ constexpr const char* kRoundMessage =
 	"СНЕЖНАЯ БИТВА! Только ножи и бесконечные снежки!";
 
 IServerGameDLL* g_server = nullptr;
+IUtilsApi* g_utils = nullptr;
 IVEngineServer2* g_engine = nullptr;
 IServerGameClients* g_gameClients = nullptr;
 ICvar* g_cvar = nullptr;
@@ -101,6 +101,7 @@ SH_DECL_HOOK8_void(IGameEventSystem, PostEventAbstract, SH_NOATTRIB, 0,
 	const CNetMessage*, unsigned long, NetChannelBufType_t);
 
 SnowballRoundPlugin g_SnowballRound;
+CGameEntitySystem* GameEntitySystem() { return g_entitySystem; }
 ConCommandCreation_t g_snowballConsoleCommand{};
 PLUGIN_EXPOSE(SnowballRoundPlugin, g_SnowballRound);
 
@@ -136,11 +137,31 @@ bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t m
 bool SnowballRoundPlugin::Unload(char* error, size_t maxlen)
 {
 	SetSnowballRound(false);
+	if (g_utils)
+	{
+		if (CEntityInstance* equip = ResolveEntity(m_decoyEquip))
+			g_utils->RemoveEntity(equip);
+		g_utils->ClearAllHooks(g_PLID);
+	}
 
 	SH_REMOVE_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), false);
 	SH_REMOVE_HOOK(IServerGameClients, ClientCommand, g_gameClients, SH_MEMBER(this, &SnowballRoundPlugin::HookClientCommand), false);
 	SH_REMOVE_HOOK(IGameEventSystem, PostEventAbstract, g_gameEventSystem, SH_MEMBER(this, &SnowballRoundPlugin::HookPostEvent), false);
 	return true;
+}
+
+void SnowballRoundPlugin::AllPluginsLoaded()
+{
+	int result = 0;
+	g_utils = static_cast<IUtilsApi*>(g_SMAPI->MetaFactory(UTILS_INTERFACE, &result, nullptr));
+	if (!g_utils || result == META_IFACE_FAILED)
+	{
+		META_CONPRINTF("[SnowballRound] ERROR: install Pisex/cs2-menus Utils 1.9.2; unloading plugin.\n");
+		const std::string command = "meta unload " + std::to_string(g_PLID) + "\n";
+		g_engine->ServerCommand(command.c_str());
+		return;
+	}
+	META_CONPRINTF("[SnowballRound] Utils %s connected; decoys use game_player_equip.\n", g_utils->GetVersion());
 }
 
 void SnowballRoundPlugin::OnLevelInit(const char*, const char*, const char*, const char*, bool, bool)
@@ -174,6 +195,7 @@ void SnowballRoundPlugin::ResetMapState()
 	m_schemaErrorLogged = m_weaponSchemaErrorLogged = false;
 	m_loadoutErrorLogged = false;
 	m_loadoutFrames = 0;
+	m_decoyEquip = CEntityHandle();
 }
 
 void SnowballRoundPlugin::HookGameFrame(bool simulating, bool, bool)
@@ -445,6 +467,11 @@ void SnowballRoundPlugin::RestoreRoundCvars()
 
 bool SnowballRoundPlugin::RefreshEntitySystem()
 {
+	if (g_utils)
+	{
+		g_entitySystem = g_utils->GetCGameEntitySystem();
+		return g_entitySystem != nullptr;
+	}
 	if (!g_gameResourceService)
 		return false;
 
@@ -622,50 +649,40 @@ void SnowballRoundPlugin::RestoreWeapons()
 	m_lockedWeapons.clear();
 }
 
-bool SnowballRoundPlugin::ResolveDecoyGiveFunction()
+CEntityInstance* SnowballRoundPlugin::GetDecoyEquip()
 {
-	if (m_giveItemResolved)
-		return m_giveItem != nullptr;
-	m_giveItemResolved = true;
-#if defined(__linux__)
-	// CounterStrikeSharp gamedata: GiveNamedItem (Linux). The actual server
-	// function takes item services, name, subtype and three optional pointers.
-	// https://github.com/roflmuffin/CounterStrikeSharp/blob/main/configs/addons/counterstrikesharp/gamedata/gamedata.json
-	struct Search
+	if (!g_utils || !RefreshEntitySystem())
+		return nullptr;
+	if (CEntityInstance* existing = ResolveEntity(m_decoyEquip))
+		return existing;
+
+	// Utils owns the game's CreateEntity/DispatchSpawn/AcceptInput signatures.
+	// Configure only one item and USE_ONLY; no weapon-stripping spawnflags.
+	CBaseEntity* created = g_utils->CreateEntityByName("game_player_equip", CEntityIndex(-1));
+	auto* equip = reinterpret_cast<CEntityInstance*>(created);
+	if (!equip)
 	{
-		std::vector<int> pattern;
-		const uint8_t* address = nullptr;
-		size_t matches = 0;
-	} search{ParseSignature("55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC ? ? ? ? 48 89 BD ? ? ? ? 89 95 ? ? ? ? 48 89 8D ? ? ? ? 44 89 85")};
-	dl_iterate_phdr([](dl_phdr_info* module, size_t, void* context) -> int {
-		const char* name = std::strrchr(module->dlpi_name, '/');
-		name = name ? name + 1 : module->dlpi_name;
-		if (std::strcmp(name, "libserver.so")) return 0;
-		auto& result = *static_cast<Search*>(context);
-		for (int i = 0; i < module->dlpi_phnum; ++i)
-		{
-			const auto& segment = module->dlpi_phdr[i];
-			if (segment.p_type != PT_LOAD || (segment.p_flags & (PF_R | PF_X)) != (PF_R | PF_X)) continue;
-			ScanSignature(reinterpret_cast<const uint8_t*>(module->dlpi_addr + segment.p_vaddr),
-				segment.p_memsz, result.pattern, result.address, result.matches);
-		}
-		return 1;
-	}, &search);
-	if (search.matches == 1)
-		m_giveItem = reinterpret_cast<GiveItemFunction>(const_cast<uint8_t*>(search.address));
-#endif
-	if (!m_giveItem)
-		META_CONPRINTF("[SnowballRound] ERROR: GiveNamedItem signature not unique or not found; decoy delivery disabled.\n");
-	else
-		META_CONPRINTF("[SnowballRound] Server GiveNamedItem resolved.\n");
-	return m_giveItem != nullptr;
+		if (!m_loadoutErrorLogged)
+			META_CONPRINTF("[SnowballRound] ERROR: Utils could not create game_player_equip.\n");
+		m_loadoutErrorLogged = true;
+		return nullptr;
+	}
+	auto* keys = new CEntityKeyValues();
+	keys->AddRef();
+	keys->SetString("weapon1", "weapon_decoy");
+	keys->SetInt("spawnflags", 1);
+	g_utils->DispatchSpawn(equip, keys);
+	keys->Release();
+	m_decoyEquip = equip->m_pEntity->GetRefEHandle();
+	META_CONPRINTF("[SnowballRound] Decoy equip entity created via Utils.\n");
+	return equip;
 }
 
 void SnowballRoundPlugin::ApplySnowballLoadoutToAll()
 {
-	if (!RefreshEntitySystem() || !ResolveSchemaOffsets() || !ResolveDecoyGiveFunction())
+	if (!g_utils || !RefreshEntitySystem() || !ResolveSchemaOffsets())
 		return;
-	if (m_offsets.playerPawn < 0 || m_offsets.pawnAlive < 0 || m_offsets.itemServices < 0 ||
+	if (m_offsets.playerPawn < 0 || m_offsets.pawnAlive < 0 ||
 		m_offsets.teamNumber < 0 || m_offsets.ownerEntity < 0)
 	{
 		if (!m_loadoutErrorLogged)
@@ -673,6 +690,8 @@ void SnowballRoundPlugin::ApplySnowballLoadoutToAll()
 		m_loadoutErrorLogged = true;
 		return;
 	}
+	CEntityInstance* equip = GetDecoyEquip();
+	if (!equip) return;
 
 	std::vector<CEntityHandle> ownersWithDecoy;
 	for (CEntityIdentity* identity = g_entitySystem->m_EntityList.m_pFirstActiveEntity;
@@ -697,14 +716,7 @@ void SnowballRoundPlugin::ApplySnowballLoadoutToAll()
 		if (std::find(ownersWithDecoy.begin(), ownersWithDecoy.end(), pawnHandle) != ownersWithDecoy.end()) continue;
 		CEntityInstance* pawn = ResolveEntity(pawnHandle);
 		if (!pawn) continue;
-		auto* pawnBytes = reinterpret_cast<uint8_t*>(pawn);
-		void* items = *reinterpret_cast<void**>(pawnBytes + m_offsets.itemServices);
-		if (!items) continue;
-		if (!m_giveItem(items, "weapon_decoy", nullptr, nullptr, nullptr, nullptr) && !m_loadoutErrorLogged)
-		{
-			m_loadoutErrorLogged = true;
-			META_CONPRINTF("[SnowballRound] ERROR: server refused weapon_decoy for slot %d.\n", slot);
-		}
+		g_utils->AcceptEntityInput(equip, "Use", variant_t(), pawn, pawn);
 	}
 }
 

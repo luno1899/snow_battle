@@ -54,6 +54,8 @@ add_library(snowball_round SHARED
   src/plugin.cpp
   "${HL2SDK_CS2}/public/tier0/memoverride.cpp"
   "${HL2SDK_CS2}/tier1/convar.cpp"
+  "${HL2SDK_CS2}/tier1/keyvalues3.cpp"
+  "${HL2SDK_CS2}/entity2/entitykeyvalues.cpp"
   ${PROTO_OUTPUTS})
 add_dependencies(snowball_round generate_protos)
 
@@ -61,6 +63,7 @@ target_compile_features(snowball_round PRIVATE cxx_std_20)
 target_compile_definitions(snowball_round PRIVATE META_IS_SOURCE2=1 SE_CS2=25 SOURCE_ENGINE=SE_CS2)
 target_include_directories(snowball_round PRIVATE
   src
+  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/cs2-menus"
   "${GENERATED_DIR}"
   "${METAMOD_SOURCE}/core"
   "${METAMOD_SOURCE}/core/sourcehook"
@@ -100,9 +103,8 @@ else()
     -fno-strict-aliasing -Wall -Wno-unused-parameter -Wno-non-virtual-dtor
     -Wno-overloaded-virtual -Wno-invalid-offsetof)
   target_include_directories(snowball_round PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/compat")
-  target_link_options(snowball_round PRIVATE -static-libgcc -static-libstdc++)
+  target_link_options(snowball_round PRIVATE -static-libgcc -static-libstdc++ -Wl,--no-undefined)
   target_link_libraries(snowball_round PRIVATE
-    dl
     "${HL2SDK_CS2}/lib/linux64/mathlib.a"
     "${HL2SDK_CS2}/lib/linux64/interfaces.a"
     "${HL2SDK_CS2}/lib/linux64/release/libprotobuf.a"
