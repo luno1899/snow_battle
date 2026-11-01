@@ -9,6 +9,7 @@
 #include <schemasystem/schemasystem.h>
 
 #include <string>
+#include <vector>
 
 class SnowballRoundPlugin final : public ISmmPlugin, public IMetamodListener
 {
@@ -32,7 +33,7 @@ public:
 	const char* GetDescription() override { return "Every tenth round is a knife and snowball battle"; }
 	const char* GetURL() override { return ""; }
 	const char* GetLicense() override { return "MIT"; }
-	const char* GetVersion() override { return "1.0.0"; }
+	const char* GetVersion() override { return "1.1.0"; }
 	const char* GetDate() override { return __DATE__; }
 	const char* GetLogTag() override { return "SNOWBALL"; }
 
@@ -45,6 +46,8 @@ private:
 	void ApplySnowballLoadoutToAll();
 	void ShowRoundMessage();
 	void ResetMapState();
+	void LockWeapons();
+	void RestoreWeapons();
 
 	bool RefreshEntitySystem();
 	bool ResolveSchemaOffsets();
@@ -58,6 +61,7 @@ private:
 	bool m_showMessageNextFrame = false;
 	bool m_cvarsOverridden = false;
 	bool m_schemaErrorLogged = false;
+	bool m_roundPrepared = false;
 	int m_fallbackRound = 0;
 	int m_currentRound = 0;
 	int m_lastEventTick = -1;
@@ -68,6 +72,16 @@ private:
 	int m_savedBuyGrenades = 1;
 	std::string m_savedTDefaultGrenades;
 	std::string m_savedCTDefaultGrenades;
+	struct LockedWeapon
+	{
+		CEntityHandle handle;
+		int primary;
+		int secondary;
+	};
+	std::vector<LockedWeapon> m_lockedWeapons;
+	int m_primaryAttack = -1;
+	int m_secondaryAttack = -1;
+	bool m_weaponSchemaErrorLogged = false;
 
 	struct SchemaOffsets
 	{

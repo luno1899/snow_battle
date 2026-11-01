@@ -32,6 +32,12 @@ jobs:
           git clone --depth 1 --branch v1.20.1 --recurse-submodules \
             https://github.com/Source2ZE/CS2Fixes.git deps/cs2fixes
 
+      - name: Test weapon restrictions
+        shell: bash
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Isrc tests/weapon_policy.cpp -o /tmp/snowball-weapon-test
+          /tmp/snowball-weapon-test
+
       - name: Configure
         shell: bash
         run: |

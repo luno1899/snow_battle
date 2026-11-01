@@ -1,4 +1,5 @@
 #include "plugin.h"
+#include "weapon_policy.h"
 
 #include <icvar.h>
 #include <iserver.h>
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 namespace
 {
@@ -32,52 +34,6 @@ IGameResourceService* g_gameResourceService = nullptr;
 IGameEventSystem* g_gameEventSystem = nullptr;
 INetworkMessages* g_networkMessages = nullptr;
 CGameEntitySystem* g_entitySystem = nullptr;
-
-class CPlayerPawnComponent
-{
-public:
-	virtual ~CPlayerPawnComponent() = 0;
-	virtual void Unknown01() = 0;
-	virtual void Unknown02() = 0;
-	virtual void Unknown03() = 0;
-	virtual void Unknown04() = 0;
-	virtual void Unknown05() = 0;
-	virtual void Unknown06() = 0;
-	virtual void Unknown07() = 0;
-	virtual void Unknown08() = 0;
-	virtual void Unknown09() = 0;
-	virtual void Unknown10() = 0;
-	virtual void Unknown11() = 0;
-	virtual void Unknown12() = 0;
-	virtual void Unknown13() = 0;
-	virtual void Unknown14() = 0;
-	virtual void Unknown15() = 0;
-	virtual void Unknown16() = 0;
-	virtual void Unknown17() = 0;
-	virtual void Unknown18() = 0;
-	virtual void Unknown19() = 0;
-	virtual void Unknown20() = 0;
-	virtual void Unknown21() = 0;
-	virtual void Unknown22() = 0;
-};
-
-class CPlayerItemServices : public CPlayerPawnComponent
-{
-public:
-	virtual ~CPlayerItemServices() = 0;
-};
-
-class CCSPlayerItemServices : public CPlayerItemServices
-{
-private:
-	virtual void* GiveNamedItemInternal(const char* name) = 0;
-
-public:
-	virtual bool GiveNamedItemBool(const char* name) = 0;
-	virtual void* GiveNamedItem(const char* name) = 0;
-	virtual void DropActiveWeapon(void* weapon) = 0;
-	virtual void StripPlayerWeapons(bool removeSuit) = 0;
-};
 
 bool IsBuyCommand(const char* command)
 {
@@ -166,7 +122,7 @@ bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t m
 	g_cvar->RegisterConCommand(g_snowballConsoleCommand);
 	g_SMAPI->AddListener(this, this);
 
-	SH_ADD_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), true);
+	SH_ADD_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), false);
 	SH_ADD_HOOK(IServerGameClients, ClientCommand, g_gameClients, SH_MEMBER(this, &SnowballRoundPlugin::HookClientCommand), false);
 	SH_ADD_HOOK(IGameEventSystem, PostEventAbstract, g_gameEventSystem, SH_MEMBER(this, &SnowballRoundPlugin::HookPostEvent), false);
 
@@ -176,9 +132,9 @@ bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t m
 
 bool SnowballRoundPlugin::Unload(char* error, size_t maxlen)
 {
-	RestoreRoundCvars();
+	SetSnowballRound(false);
 
-	SH_REMOVE_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), true);
+	SH_REMOVE_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), false);
 	SH_REMOVE_HOOK(IServerGameClients, ClientCommand, g_gameClients, SH_MEMBER(this, &SnowballRoundPlugin::HookClientCommand), false);
 	SH_REMOVE_HOOK(IGameEventSystem, PostEventAbstract, g_gameEventSystem, SH_MEMBER(this, &SnowballRoundPlugin::HookPostEvent), false);
 	return true;
@@ -186,12 +142,14 @@ bool SnowballRoundPlugin::Unload(char* error, size_t maxlen)
 
 void SnowballRoundPlugin::OnLevelInit(const char*, const char*, const char*, const char*, bool, bool)
 {
+	RestoreRoundCvars();
 	ResetMapState();
 }
 
 void SnowballRoundPlugin::OnLevelShutdown()
 {
 	RestoreRoundCvars();
+	m_lockedWeapons.clear(); // The old map's entities may already be destroyed.
 	g_entitySystem = nullptr;
 	ResetMapState();
 }
@@ -205,12 +163,28 @@ void SnowballRoundPlugin::ResetMapState()
 	m_currentRound = 0;
 	m_lastEventTick = -1;
 	m_lastEventName.clear();
+	m_roundPrepared = false;
+	m_lockedWeapons.clear();
+	m_offsets = {};
+	m_primaryAttack = m_secondaryAttack = -1;
+	m_schemaErrorLogged = m_weaponSchemaErrorLogged = false;
 }
 
 void SnowballRoundPlugin::HookGameFrame(bool simulating, bool, bool)
 {
 	if (!simulating)
 		RETURN_META(MRES_IGNORED);
+
+	if (m_snowballRound)
+	{
+		int round = 0;
+		bool warmup = false;
+		// Also stop when rules advance if the broadcast round_end is missed.
+		if (ReadGameRules(round, warmup) && m_currentRound > 0 && round != m_currentRound)
+			SetSnowballRound(false);
+		if (m_snowballRound)
+			LockWeapons();
+	}
 
 	if (m_applyLoadoutsNextFrame)
 	{
@@ -247,7 +221,8 @@ void SnowballRoundPlugin::HookClientCommand(CPlayerSlot, const CCommand& command
 
 void SnowballRoundPlugin::BeginTestRound()
 {
-	m_currentRound = 0;
+	bool warmup = false;
+	ReadGameRules(m_currentRound, warmup);
 	SetSnowballRound(true);
 	m_applyLoadoutsNextFrame = true;
 	m_showMessageNextFrame = true;
@@ -282,19 +257,31 @@ void SnowballRoundPlugin::HandleEvent(const char* name)
 {
 	if (!std::strcmp(name, "round_prestart"))
 	{
+		SetSnowballRound(false);
 		BeginRound();
+		m_roundPrepared = true;
 	}
 	else if (!std::strcmp(name, "round_start"))
 	{
 		// Some CS2 builds do not emit round_prestart through the legacy event
 		// bridge. round_start is always delivered, so use it as the fallback
 		// round boundary as well.
-		BeginRound();
+		if (!m_roundPrepared)
+		{
+			SetSnowballRound(false);
+			BeginRound();
+		}
+		m_roundPrepared = false;
 		if (m_snowballRound)
 		{
 			m_applyLoadoutsNextFrame = true;
 			m_showMessageNextFrame = true;
 		}
+	}
+	else if (!std::strcmp(name, "round_end") || !std::strcmp(name, "round_officially_ended"))
+	{
+		SetSnowballRound(false);
+		m_roundPrepared = false;
 	}
 	else if (!std::strcmp(name, "player_spawn"))
 	{
@@ -314,8 +301,6 @@ void SnowballRoundPlugin::BeginRound()
 	bool warmup = false;
 	int round = 0;
 	const bool haveRules = ReadGameRules(round, warmup);
-	if (haveRules && round == m_currentRound)
-		return;
 	if (!haveRules)
 		round = ++m_fallbackRound;
 	else
@@ -340,7 +325,13 @@ void SnowballRoundPlugin::SetSnowballRound(bool enabled)
 	if (enabled)
 		OverrideRoundCvars();
 	else
+	{
+		m_applyLoadoutsNextFrame = false;
+		m_showMessageNextFrame = false;
+		RestoreWeapons();
 		RestoreRoundCvars();
+		META_CONPRINTF("[SnowballRound] Snowball round ended; weapon attacks and cvars restored.\n");
+	}
 }
 
 void SnowballRoundPlugin::OverrideRoundCvars()
@@ -458,8 +449,8 @@ bool SnowballRoundPlugin::ResolveSchemaOffsets()
 	m_offsets.totalRoundsPlayed = FindSchemaOffset("CCSGameRules", "m_totalRoundsPlayed");
 	m_offsets.warmupPeriod = FindSchemaOffset("CCSGameRules", "m_bWarmupPeriod");
 
-	m_offsets.resolved = m_offsets.playerPawn >= 0 && m_offsets.pawnAlive >= 0 &&
-		m_offsets.teamNumber >= 0 && m_offsets.itemServices >= 0 && m_offsets.gameRules >= 0 &&
+	// Reading GameRules must not depend on unrelated player/loadout fields.
+	m_offsets.resolved = m_offsets.gameRules >= 0 &&
 		m_offsets.totalRoundsPlayed >= 0 && m_offsets.warmupPeriod >= 0;
 	if (!m_offsets.resolved && !m_schemaErrorLogged)
 	{
@@ -518,6 +509,60 @@ bool SnowballRoundPlugin::ReadGameRules(int& currentRound, bool& warmup)
 		return true;
 	}
 	return false;
+}
+
+void SnowballRoundPlugin::LockWeapons()
+{
+	if (!RefreshEntitySystem())
+		return;
+	if (m_primaryAttack < 0 || m_secondaryAttack < 0)
+	{
+		m_primaryAttack = FindSchemaOffset("CBasePlayerWeapon", "m_nNextPrimaryAttackTick");
+		m_secondaryAttack = FindSchemaOffset("CBasePlayerWeapon", "m_nNextSecondaryAttackTick");
+		if (m_primaryAttack < 0 || m_secondaryAttack < 0)
+		{
+			if (!m_weaponSchemaErrorLogged)
+				META_CONPRINTF("[SnowballRound] Cannot lock weapons: attack schema fields missing.\n");
+			m_weaponSchemaErrorLogged = true;
+			return;
+		}
+	}
+
+	// Execute before simulation, on every frame, so newly bought/picked-up
+	// weapons are covered too. Knife and decoy attack timers are untouched.
+	for (CEntityIdentity* identity = g_entitySystem->m_EntityList.m_pFirstActiveEntity;
+		 identity; identity = identity->m_pNext)
+	{
+		if (!identity->m_pInstance || !SnowballBlocksWeapon(identity->GetClassname()))
+			continue;
+		auto* bytes = reinterpret_cast<uint8_t*>(identity->m_pInstance);
+		auto& primary = *reinterpret_cast<int*>(bytes + m_primaryAttack);
+		auto& secondary = *reinterpret_cast<int*>(bytes + m_secondaryAttack);
+		const CEntityHandle handle = identity->GetRefEHandle();
+		const auto saved = std::find_if(m_lockedWeapons.begin(), m_lockedWeapons.end(),
+			[&](const LockedWeapon& weapon) { return weapon.handle == handle; });
+		if (saved == m_lockedWeapons.end())
+			m_lockedWeapons.push_back({handle, primary, secondary});
+		primary = secondary = std::numeric_limits<int>::max() - 1;
+	}
+}
+
+void SnowballRoundPlugin::RestoreWeapons()
+{
+	if (!m_lockedWeapons.empty() && RefreshEntitySystem() &&
+		m_primaryAttack >= 0 && m_secondaryAttack >= 0)
+	{
+		for (const LockedWeapon& weapon : m_lockedWeapons)
+		{
+			CEntityInstance* entity = ResolveEntity(weapon.handle);
+			if (!entity)
+				continue;
+			auto* bytes = reinterpret_cast<uint8_t*>(entity);
+			*reinterpret_cast<int*>(bytes + m_primaryAttack) = weapon.primary;
+			*reinterpret_cast<int*>(bytes + m_secondaryAttack) = weapon.secondary;
+		}
+	}
+	m_lockedWeapons.clear();
 }
 
 void SnowballRoundPlugin::ApplySnowballLoadoutToAll()
