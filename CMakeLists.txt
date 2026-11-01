@@ -56,6 +56,8 @@ add_library(snowball_round SHARED
   "${HL2SDK_CS2}/tier1/convar.cpp"
   "${HL2SDK_CS2}/tier1/keyvalues3.cpp"
   "${HL2SDK_CS2}/entity2/entitykeyvalues.cpp"
+  "${HL2SDK_CS2}/entity2/entitysystem.cpp"
+  "${HL2SDK_CS2}/entity2/entityidentity.cpp"
   ${PROTO_OUTPUTS})
 add_dependencies(snowball_round generate_protos)
 
