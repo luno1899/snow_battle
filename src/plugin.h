@@ -49,6 +49,7 @@ private:
 	void ResetMapState();
 	void LockWeapons();
 	void RestoreWeapons();
+	bool UpdateRoundStateFromRules();
 
 	bool RefreshEntitySystem();
 	bool ResolveSchemaOffsets();

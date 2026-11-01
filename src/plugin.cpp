@@ -174,7 +174,29 @@ void SnowballRoundPlugin::HookGameFrame(bool simulating, bool, bool)
 {
 	if (!simulating)
 		RETURN_META(MRES_IGNORED);
+	UpdateRoundStateFromRules();
+	if (m_snowballRound)
+		LockWeapons();
 
+	if (m_applyLoadoutsNextFrame)
+	{
+		m_applyLoadoutsNextFrame = false;
+		if (m_snowballRound)
+			ApplySnowballLoadoutToAll();
+	}
+
+	if (m_showMessageNextFrame)
+	{
+		m_showMessageNextFrame = false;
+		if (m_snowballRound)
+			ShowRoundMessage();
+	}
+
+	RETURN_META(MRES_IGNORED);
+}
+
+bool SnowballRoundPlugin::UpdateRoundStateFromRules()
+{
 	int round = 0;
 	bool warmup = false;
 	RoundSnapshot snapshot;
@@ -199,24 +221,9 @@ void SnowballRoundPlugin::HookGameFrame(bool simulating, bool, bool)
 		else if (m_snowballRound && m_currentRound > 0 && round != m_currentRound)
 			SetSnowballRound(false);
 	}
-	if (m_snowballRound)
-		LockWeapons();
-
-	if (m_applyLoadoutsNextFrame)
-	{
-		m_applyLoadoutsNextFrame = false;
-		if (m_snowballRound)
-			ApplySnowballLoadoutToAll();
-	}
-
-	if (m_showMessageNextFrame)
-	{
-		m_showMessageNextFrame = false;
-		if (m_snowballRound)
-			ShowRoundMessage();
-	}
-
-	RETURN_META(MRES_IGNORED);
+	else
+		return false;
+	return true;
 }
 
 void SnowballRoundPlugin::HookClientCommand(CPlayerSlot, const CCommand& command)
@@ -276,12 +283,10 @@ void SnowballRoundPlugin::HandleEvent(const char* name)
 	if (!std::strcmp(name, "round_prestart") || !std::strcmp(name, "round_start") ||
 		!std::strcmp(name, "round_end") || !std::strcmp(name, "round_officially_ended"))
 	{
-		int round = 0;
-		bool warmup = false;
-		RoundSnapshot snapshot;
 		// A single rules observer owns transitions when schema is available.
 		// Events can arrive before/after the rules update, or more than once.
-		if (ReadGameRules(round, warmup, &snapshot))
+		// Observe prestart immediately so default grenades can be set before spawn.
+		if (UpdateRoundStateFromRules())
 			return;
 	}
 	if (!std::strcmp(name, "round_prestart"))
