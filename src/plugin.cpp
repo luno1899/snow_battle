@@ -736,16 +736,7 @@ void SnowballRoundPlugin::ApplySnowballLoadoutToAll()
 	CEntityInstance* equip = GetDecoyEquip();
 	if (!equip) return;
 
-	std::vector<CEntityHandle> ownersWithDecoy;
-	for (CEntityIdentity* identity = g_entitySystem->m_EntityList.m_pFirstActiveEntity;
-		identity; identity = identity->m_pNext)
-	{
-		const char* name = identity->GetClassname();
-		if (!identity->m_pInstance || !name || std::strcmp(name, "weapon_decoy")) continue;
-		auto* bytes = reinterpret_cast<uint8_t*>(identity->m_pInstance);
-		ownersWithDecoy.push_back(*reinterpret_cast<CEntityHandle*>(bytes + m_offsets.ownerEntity));
-	}
-
+	std::vector<CEntityHandle> alivePawns;
 	constexpr int maxClients = 64;
 	for (int slot = 0; slot < maxClients; ++slot)
 	{
@@ -756,6 +747,36 @@ void SnowballRoundPlugin::ApplySnowballLoadoutToAll()
 		const auto team = *reinterpret_cast<uint8_t*>(bytes + m_offsets.teamNumber);
 		if (team != kTeamTerrorist && team != kTeamCounterTerrorist) continue;
 		const CEntityHandle pawnHandle = *reinterpret_cast<CEntityHandle*>(bytes + m_offsets.playerPawn);
+		if (ResolveEntity(pawnHandle))
+			alivePawns.push_back(pawnHandle);
+	}
+
+	std::vector<CEntityHandle> ownersWithDecoy;
+	std::vector<CEntityHandle> grenadesToRemove;
+	for (CEntityIdentity* identity = g_entitySystem->m_EntityList.m_pFirstActiveEntity;
+		identity; identity = identity->m_pNext)
+	{
+		const char* name = identity->GetClassname();
+		if (!identity->m_pInstance || !SnowballIsGrenadeWeapon(name)) continue;
+		auto* bytes = reinterpret_cast<uint8_t*>(identity->m_pInstance);
+		const CEntityHandle owner = *reinterpret_cast<CEntityHandle*>(bytes + m_offsets.ownerEntity);
+		if (std::find(alivePawns.begin(), alivePawns.end(), owner) == alivePawns.end()) continue;
+		if (!std::strcmp(name, "weapon_decoy"))
+			ownersWithDecoy.push_back(owner);
+		else
+			grenadesToRemove.push_back(identity->GetRefEHandle());
+	}
+
+	// Remove only inventory weapon entities. Projectile class names are not in
+	// SnowballIsGrenadeWeapon, so thrown snowballs remain alive in the world.
+	for (const CEntityHandle& handle : grenadesToRemove)
+	{
+		if (CEntityInstance* grenade = ResolveEntity(handle))
+			g_utils->RemoveEntity(grenade);
+	}
+
+	for (const CEntityHandle& pawnHandle : alivePawns)
+	{
 		if (std::find(ownersWithDecoy.begin(), ownersWithDecoy.end(), pawnHandle) != ownersWithDecoy.end()) continue;
 		CEntityInstance* pawn = ResolveEntity(pawnHandle);
 		if (!pawn) continue;

@@ -37,7 +37,7 @@ public:
 	const char* GetDescription() override { return "Every tenth round is a knife and snowball battle"; }
 	const char* GetURL() override { return ""; }
 	const char* GetLicense() override { return "MIT"; }
-	const char* GetVersion() override { return "1.2.1"; }
+	const char* GetVersion() override { return "1.2.2"; }
 	const char* GetDate() override { return __DATE__; }
 	const char* GetLogTag() override { return "SNOWBALL"; }
 

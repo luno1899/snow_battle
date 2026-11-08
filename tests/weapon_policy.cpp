@@ -14,5 +14,16 @@ int main()
 	for (const char* name : allowed)
 		if (SnowballBlocksWeapon(name))
 			return std::fprintf(stderr, "Unexpected weapon block: %s\n", name), 1;
+	const char* grenades[] = {"weapon_decoy", "weapon_flashbang", "weapon_hegrenade",
+		"weapon_smokegrenade", "weapon_molotov", "weapon_incgrenade", "weapon_tagrenade",
+		"weapon_healthshot", "weapon_snowball"};
+	for (const char* name : grenades)
+		if (!SnowballIsGrenadeWeapon(name))
+			return std::fprintf(stderr, "Grenade not recognized: %s\n", name), 1;
+	const char* nonGrenades[] = {"weapon_glock", "weapon_knife", "decoy_projectile",
+		"smokegrenade_projectile", "", nullptr};
+	for (const char* name : nonGrenades)
+		if (SnowballIsGrenadeWeapon(name))
+			return std::fprintf(stderr, "Unexpected grenade: %s\n", name ? name : "null"), 1;
 	return 0;
 }
