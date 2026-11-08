@@ -9,6 +9,7 @@
 #include <schemasystem/schemasystem.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 #include "round_tracker.h"
 
@@ -25,6 +26,7 @@ public:
 
 	void HookGameFrame(bool simulating, bool firstTick, bool lastTick);
 	void HookClientCommand(CPlayerSlot slot, const CCommand& command);
+	void HookDispatchConCommand(ConCommandRef commandRef, const CCommandContext& context, const CCommand& command);
 	void HookPostEvent(CSplitScreenSlot slot, bool localOnly, int clientCount,
 		const uint64* clients, INetworkMessageInternal* event, const CNetMessage* data,
 		unsigned long size, NetChannelBufType_t bufferType);
@@ -35,7 +37,7 @@ public:
 	const char* GetDescription() override { return "Every tenth round is a knife and snowball battle"; }
 	const char* GetURL() override { return ""; }
 	const char* GetLicense() override { return "MIT"; }
-	const char* GetVersion() override { return "1.2.0"; }
+	const char* GetVersion() override { return "1.2.1"; }
 	const char* GetDate() override { return __DATE__; }
 	const char* GetLogTag() override { return "SNOWBALL"; }
 
@@ -80,6 +82,7 @@ private:
 	int m_savedBuyGrenades = 1;
 	std::string m_savedTDefaultGrenades;
 	std::string m_savedCTDefaultGrenades;
+	std::vector<std::pair<const char*, int>> m_savedDropCvars;
 	struct LockedWeapon
 	{
 		CEntityHandle handle;

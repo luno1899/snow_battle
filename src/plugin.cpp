@@ -26,6 +26,16 @@ constexpr int kEntitySystemOffsetWindows = 88;
 constexpr int kEntitySystemOffsetLinux = 80;
 constexpr const char* kRoundMessage =
 	"СНЕЖНАЯ БИТВА! Только ножи и бесконечные снежки!";
+constexpr const char* kDropCvars[] = {
+	"mp_drop_grenade_enable",
+	"mp_drop_knife_enable",
+	"mp_death_drop_gun",
+	"mp_death_drop_grenade",
+	"mp_death_drop_taser",
+	"mp_death_drop_healthshot",
+	"mp_death_drop_defuser",
+	"mp_death_drop_c4",
+};
 
 IServerGameDLL* g_server = nullptr;
 IUtilsApi* g_utils = nullptr;
@@ -44,6 +54,11 @@ bool IsBuyCommand(const char* command)
 		(!V_stricmp(command, "buy") || !V_stricmp(command, "autobuy") ||
 		 !V_stricmp(command, "rebuy") || !V_stricmp(command, "buyammo1") ||
 		 !V_stricmp(command, "buyammo2"));
+}
+
+bool IsDropCommand(const CCommand& command)
+{
+	return command.ArgC() > 0 && !V_stricmp(command[0], "drop");
 }
 
 bool IsWeaponBlockCommand(const CCommand& command)
@@ -96,6 +111,8 @@ bool IsSnowballTestCommand(const CCommand& command)
 
 SH_DECL_HOOK3_void(IServerGameDLL, GameFrame, SH_NOATTRIB, 0, bool, bool, bool);
 SH_DECL_HOOK2_void(IServerGameClients, ClientCommand, SH_NOATTRIB, 0, CPlayerSlot, const CCommand&);
+SH_DECL_HOOK3_void(ICvar, DispatchConCommand, SH_NOATTRIB, 0,
+	ConCommandRef, const CCommandContext&, const CCommand&);
 SH_DECL_HOOK8_void(IGameEventSystem, PostEventAbstract, SH_NOATTRIB, 0,
 	CSplitScreenSlot, bool, int, const uint64*, INetworkMessageInternal*,
 	const CNetMessage*, unsigned long, NetChannelBufType_t);
@@ -128,6 +145,7 @@ bool SnowballRoundPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t m
 
 	SH_ADD_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), false);
 	SH_ADD_HOOK(IServerGameClients, ClientCommand, g_gameClients, SH_MEMBER(this, &SnowballRoundPlugin::HookClientCommand), false);
+	SH_ADD_HOOK(ICvar, DispatchConCommand, g_cvar, SH_MEMBER(this, &SnowballRoundPlugin::HookDispatchConCommand), false);
 	SH_ADD_HOOK(IGameEventSystem, PostEventAbstract, g_gameEventSystem, SH_MEMBER(this, &SnowballRoundPlugin::HookPostEvent), false);
 
 	META_CONPRINTF("[SnowballRound] Loaded for Metamod:Source 2.0 build 1411 (SourceHook).\n");
@@ -146,6 +164,7 @@ bool SnowballRoundPlugin::Unload(char* error, size_t maxlen)
 
 	SH_REMOVE_HOOK(IServerGameDLL, GameFrame, g_server, SH_MEMBER(this, &SnowballRoundPlugin::HookGameFrame), false);
 	SH_REMOVE_HOOK(IServerGameClients, ClientCommand, g_gameClients, SH_MEMBER(this, &SnowballRoundPlugin::HookClientCommand), false);
+	SH_REMOVE_HOOK(ICvar, DispatchConCommand, g_cvar, SH_MEMBER(this, &SnowballRoundPlugin::HookDispatchConCommand), false);
 	SH_REMOVE_HOOK(IGameEventSystem, PostEventAbstract, g_gameEventSystem, SH_MEMBER(this, &SnowballRoundPlugin::HookPostEvent), false);
 	return true;
 }
@@ -265,7 +284,15 @@ void SnowballRoundPlugin::HookClientCommand(CPlayerSlot, const CCommand& command
 
 	if (m_snowballRound && command.ArgC() > 0 && IsBuyCommand(command[0]))
 		RETURN_META(MRES_SUPERCEDE);
-	if (m_snowballRound && IsWeaponBlockCommand(command))
+	if (m_snowballRound && (IsDropCommand(command) || IsWeaponBlockCommand(command)))
+		RETURN_META(MRES_SUPERCEDE);
+
+	RETURN_META(MRES_IGNORED);
+}
+
+void SnowballRoundPlugin::HookDispatchConCommand(ConCommandRef, const CCommandContext& context, const CCommand& command)
+{
+	if (m_snowballRound && context.GetPlayerSlot().Get() >= 0 && IsDropCommand(command))
 		RETURN_META(MRES_SUPERCEDE);
 
 	RETURN_META(MRES_IGNORED);
@@ -437,6 +464,15 @@ void SnowballRoundPlugin::OverrideRoundCvars()
 		tGrenades.SetString("weapon_decoy");
 	if (ctGrenades.IsValidRef())
 		ctGrenades.SetString("weapon_decoy");
+	for (const char* name : kDropCvars)
+	{
+		ConVarRefAbstract cvar(name);
+		if (!cvar.IsValidRef())
+			continue;
+
+		m_savedDropCvars.emplace_back(name, cvar.GetInt());
+		cvar.SetInt(0);
+	}
 }
 
 void SnowballRoundPlugin::RestoreRoundCvars()
@@ -462,6 +498,13 @@ void SnowballRoundPlugin::RestoreRoundCvars()
 		tGrenades.SetString(m_savedTDefaultGrenades.c_str());
 	if (ctGrenades.IsValidRef())
 		ctGrenades.SetString(m_savedCTDefaultGrenades.c_str());
+	for (const auto& [name, value] : m_savedDropCvars)
+	{
+		ConVarRefAbstract cvar(name);
+		if (cvar.IsValidRef())
+			cvar.SetInt(value);
+	}
+	m_savedDropCvars.clear();
 	m_cvarsOverridden = false;
 }
 
